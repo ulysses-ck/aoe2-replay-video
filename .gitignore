@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / tokens
+client_secret*.json
+token*.json
+*.env
+.env
+
+# Media / replays (no versionar)
+*.aoe2record
+*.mp4
+*.mkv
+*.avi
+recordings/
+output/
+
+# IDE
+.vscode/
+.idea/

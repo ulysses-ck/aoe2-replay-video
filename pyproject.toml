@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aoe2-replay-video"
+version = "0.1.0"
+description = "Convert Age of Empires II: DE replays into summarized highlight videos."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ulysses" }]
+dependencies = [
+    "aoc-mgz",
+    "pyautogui",
+    "pynput",
+    "ffmpeg-python",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "customtkinter",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy"]
+
+[project.scripts]
+aoe2-replay-video = "aoe2_replay_video.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
