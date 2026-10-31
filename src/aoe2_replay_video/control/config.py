@@ -18,8 +18,8 @@ class Config:
     speed_fast: float = 4.0
     speed_normal: float = 1.0
     # In-game speed hotkeys (configurable). AoE2 DE defaults vary; user sets these.
-    key_speed_up: str = "plus"
-    key_speed_down: str = "minus"
+    key_speed_up: str = "add"       # numpad + (bind in AoE2 DE)
+    key_speed_down: str = "subtract" # numpad - (bind in AoE2 DE)
     # Window geometry
     window_width: int = 1920
     window_height: int = 1080
@@ -33,8 +33,9 @@ class Config:
     video_codec: str = "libx264"  # or h264_nvenc
     audio: bool = True
     # Timing
-    startup_wait: float = 20.0   # seconds to wait for game to load replay
+    startup_wait: float = 5.0   # seconds to wait for game to load replay
     pre_roll: float = 3.0       # record a few seconds before game time 0
+    debug: bool = False
 
     def resolve(self) -> None:
         self.output_path = str(Path(self.output_path).resolve())

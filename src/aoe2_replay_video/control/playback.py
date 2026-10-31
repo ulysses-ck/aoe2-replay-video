@@ -43,21 +43,30 @@ def _center_camera(cfg: Config, x: float, y: float, map_size: int) -> None:
     pyautogui.click(px, py)
 
 
+DEBUG = False
+
+
 def run(cfg: Config) -> None:
+    global DEBUG
+    DEBUG = getattr(cfg, "debug", False)
     events = json.loads(Path(cfg.events_path).read_text()) if cfg.events_path else []
     events.sort(key=lambda e: e["t"])
+    if DEBUG:
+        print(f"Loaded {len(events)} events. First: {events[0] if events else None}", flush=True)
 
-    # Wait for game to load
     time.sleep(cfg.startup_wait)
 
-    # Find window
     from .window import find_window, get_bbox, set_geometry
 
     win = find_window("Age of Empires", timeout=30.0)
+    if DEBUG:
+        print("window:", win, flush=True)
     if win is not None:
         set_geometry(win, 0, 0, cfg.window_width, cfg.window_height)
         time.sleep(1.0)
     bbox = get_bbox(win) or (0, 0, cfg.window_width, cfg.window_height)
+    if DEBUG:
+        print("bbox:", bbox, flush=True)
 
     from .recorder import Recorder
 
@@ -65,46 +74,48 @@ def run(cfg: Config) -> None:
     rec.start(bbox)
     time.sleep(cfg.pre_roll)
 
-    # Game time tracking
-    game_time = 0.0  # ms
-    wall_start = time.time()
+    game_time = 0.0
+    wall_prev = time.time()
     speed_fast = True
     _set_speed(cfg, True)
+    if DEBUG:
+        print("Started recording. Speed: fast", flush=True)
 
     i = 0
     n = len(events)
+    last_event_t = events[-1]["t"] if events else 0
     try:
-        while i < n or game_time < (events[-1]["t"] if events else 0) + 30000:
+        while True:
             now = time.time()
-            elapsed = (now - wall_start) * 1000.0
-            # advance game time by speed factor (approx)
-            # We recompute each loop based on speed state
-            # Use incremental: handled below
-            # Simple: game_time = elapsed * current_speed
+            dt = (now - wall_prev) * 1000.0
             current_speed = cfg.speed_fast if speed_fast else cfg.speed_normal
-            game_time = elapsed * current_speed  # rough; better to integrate, but ok for MVP
+            game_time += dt * current_speed
+            wall_prev = now
 
-            # Process due events
             while i < n and events[i]["t"] <= game_time:
                 ev = events[i]
-                # slow down for event
+                if DEBUG:
+                    print(f"  event @ {ev['t']}ms: {ev['type']} player={ev.get('player')}", flush=True)
                 if speed_fast:
                     _set_speed(cfg, False)
                     speed_fast = False
+                    if DEBUG:
+                        print("    -> slow", flush=True)
                 _center_camera(cfg, ev.get("x", 0) or 0, ev.get("y", 0) or 0, cfg.map_size)
                 i += 1
 
-            # If no events pending soon, speed up
             next_t = events[i]["t"] if i < n else None
-            if next_t is not None and (next_t - game_time) > 5000 and not speed_fast:
+            if next_t is not None and (next_t - game_time) > 3000 and not speed_fast:
                 _set_speed(cfg, True)
                 speed_fast = True
-                wall_start = time.time() - (game_time / (cfg.speed_fast * 1000.0))
-            # exit condition
-            if i >= n and game_time > (events[-1]["t"] if events else 0) + 30000:
+                if DEBUG:
+                    print(f"  speed up (next event in {next_t - game_time:.0f}ms)", flush=True)
+
+            if i >= n and game_time > last_event_t + 30000:
                 break
             time.sleep(0.25)
     finally:
         rec.stop()
-        # restore speed
         _set_speed(cfg, True)
+        if DEBUG:
+            print("Done.", flush=True)
