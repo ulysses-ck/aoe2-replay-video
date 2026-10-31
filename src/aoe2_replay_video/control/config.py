@@ -36,6 +36,8 @@ class Config:
     startup_wait: float = 5.0   # seconds to wait for game to load replay
     pre_roll: float = 3.0       # record a few seconds before game time 0
     debug: bool = False
+    # Zoom
+    zoom_out_clicks: int = 8   # mouse wheel clicks to zoom out at start
 
     def resolve(self) -> None:
         self.output_path = str(Path(self.output_path).resolve())

@@ -77,6 +77,17 @@ def run(cfg: Config) -> None:
         set_geometry(win, 0, 0, cfg.window_width, cfg.window_height)
         time.sleep(1.0)
         activate(win)
+        # Zoom out
+        if pyautogui is not None:
+            cx = cfg.window_width // 2
+            cy = cfg.window_height // 2
+            pyautogui.moveTo(cx, cy)
+            time.sleep(0.3)
+            for _ in range(cfg.zoom_out_clicks):
+                pyautogui.scroll(-3)
+                time.sleep(0.1)
+            if DEBUG:
+                print(f"Zoomed out ({cfg.zoom_out_clicks} clicks)", flush=True)
     bbox = get_bbox(win) or (0, 0, cfg.window_width, cfg.window_height)
     if DEBUG:
         print("bbox:", bbox, flush=True)
