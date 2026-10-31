@@ -160,8 +160,17 @@ def parse_events(replay_path: str) -> list[Event]:
             else:
                 i += 1
 
-    events.sort(key=lambda e: e.t)
-    return events
+    # Deduplicate: same type+player within a short window -> keep first
+    deduped: list[Event] = []
+    for ev in sorted(events, key=lambda e: e.t):
+        if deduped:
+            last = deduped[-1]
+            if last.type == ev.type and last.player == ev.player and (ev.t - last.t) < 10000:
+                # merge: keep earlier, skip
+                continue
+        deduped.append(ev)
+    deduped.sort(key=lambda e: e.t)
+    return deduped
 
 
 def events_to_json(events: Iterable[Event]) -> str:

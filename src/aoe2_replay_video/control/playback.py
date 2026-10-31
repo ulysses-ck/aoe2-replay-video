@@ -108,13 +108,13 @@ def run(cfg: Config) -> None:
                 i += 1
 
             next_t = events[i]["t"] if i < n else None
-            if next_t is not None and (next_t - game_time) > 3000 and not speed_fast:
+            if next_t is not None and (next_t - game_time) > 10000 and not speed_fast:
                 _set_speed(cfg, True)
                 speed_fast = True
                 if DEBUG:
                     print(f"  speed up (next event in {next_t - game_time:.0f}ms)", flush=True)
 
-            if i >= n and game_time > last_event_t + 30000:
+            if i >= n and game_time > last_event_t + 10000:
                 break
             time.sleep(0.25)
     finally:
