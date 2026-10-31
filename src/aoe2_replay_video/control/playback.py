@@ -56,14 +56,17 @@ def run(cfg: Config) -> None:
 
     time.sleep(cfg.startup_wait)
 
-    from .window import find_window, get_bbox, set_geometry
+    from .window import activate, find_window, get_bbox, set_geometry
 
     win = find_window("Age of Empires", timeout=30.0)
     if DEBUG:
         print("window:", win, flush=True)
     if win is not None:
+        activate(win)
+        time.sleep(0.5)
         set_geometry(win, 0, 0, cfg.window_width, cfg.window_height)
         time.sleep(1.0)
+        activate(win)
     bbox = get_bbox(win) or (0, 0, cfg.window_width, cfg.window_height)
     if DEBUG:
         print("bbox:", bbox, flush=True)

@@ -60,6 +60,24 @@ def find_window(title_substring: str = "Age of Empires", timeout: float = 30.0) 
     return None
 
 
+def activate(window: Any) -> None:
+    if window is None:
+        return
+    try:
+        if hasattr(window, "activate"):
+            window.activate()
+            return
+    except Exception:
+        pass
+    if isinstance(window, str):
+        try:
+            import subprocess
+
+            subprocess.run(["xdotool", "windowactivate", window], check=False, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+
 def set_geometry(window: Any, x: int, y: int, w: int, h: int) -> None:
     if window is None:
         return
