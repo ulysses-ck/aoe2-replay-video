@@ -20,14 +20,19 @@ class Config:
     # In-game speed hotkeys (configurable). AoE2 DE defaults vary; user sets these.
     key_speed_up: str = "add"       # numpad + (bind in AoE2 DE)
     key_speed_down: str = "subtract" # numpad - (bind in AoE2 DE)
-    # Window geometry
-    window_width: int = 1920
-    window_height: int = 1080
+    # How many taps to move one speed tier at a time (fast <-> normal).
+    speed_steps: int = 3
+    # Window geometry. 0 means "maximize and use the full client area".
+    window_width: int = 0
+    window_height: int = 0
     borderless: bool = True
-    # Minimap rectangle on screen (x, y, w, h) for camera centering; None disables.
+    # Minimap rectangle on screen (x, y, w, h). None = derive from client size
+    # using the fractions below (measured at 1366x768 maximize).
     minimap: tuple[int, int, int, int] | None = None
-    # Map world size in tiles (for minimap mapping)
-    map_size: int = 200
+    minimap_center: tuple[float, float] = (0.87555, 0.89323)
+    minimap_size: tuple[float, float] = (0.22108, 0.20833)
+    # Map world size in tiles; 0 = auto-detect from the replay header.
+    map_size: int = 0
     # FFmpeg
     ffmpeg_preset: str = "fast"
     video_codec: str = "libx264"  # or h264_nvenc
@@ -41,3 +46,18 @@ class Config:
 
     def resolve(self) -> None:
         self.output_path = str(Path(self.output_path).resolve())
+
+    def resolve_minimap(self, client_w: int, client_h: int) -> tuple[int, int, int, int]:
+        """Return the minimap bbox in screen pixels for a given client size."""
+        if self.minimap is not None:
+            return self.minimap
+        cx = self.minimap_center[0] * client_w
+        cy = self.minimap_center[1] * client_h
+        w = self.minimap_size[0] * client_w
+        h = self.minimap_size[1] * client_h
+        return (
+            int(round(cx - w / 2.0)),
+            int(round(cy - h / 2.0)),
+            int(round(w)),
+            int(round(h)),
+        )

@@ -85,8 +85,8 @@ Herramienta de escritorio que convierte un replay de **Age of Empires II: Defini
 
 ## Estado actual
 
-- ✅ Fase 1 (parsing): implementado en `src/aoe2_replay_video/parser/replay.py`. Detecta AgeUp, Castle, SiegeWorkshop, Wonder, Monastery, Advance, Relic, APMPeak, Raid, Battle. Probado en replays v101.103.48987.0 y v101.103.54800.0.
-- 🚧 Fase 2 (control + captura): scaffolding implementado en `src/aoe2_replay_video/control/` (launcher, window, recorder, playback, CLI). Requiere ejecución en Windows para control real.
+- ✅ Fase 1 (parsing): implementado en `src/aoe2_replay_video/parser/replay.py`. Detecta APMPeak, Raid y Battle. Las detecciones basadas en paquetes BUILD (Castle, Monastery, SiegeWorkshop, Wonder, AgeUp) están desactivadas porque `mgz` los lee mal en versiones de juego ≥ 57257.
+- 🚧 Fase 2 (control + captura): implementado en `src/aoe2_replay_video/control/` (launcher, window, recorder, playback, CLI). Maximiza la ventana, detecta el tamaño del mapa desde el replay y centra la cámara con la geometría real del minimapa (diamante isométrico).
 - ⏳ Fase 3 (edición FFmpeg): pendiente.
 - ⏳ Fase 4 (YouTube): pendiente.
 
@@ -96,6 +96,15 @@ Uso rápido del parser:
 pip install -e .
 python -c "from aoe2_replay_video.parser import parse_events; print(len(parse_events('replay.aoe2record')))"
 ```
+
+Uso rápido de la captura (Windows, con el replay cargado en el juego):
+
+```bash
+aoe2-replay-record --replay replay.aoe2record --events events.json --output output.mp4 --debug
+```
+
+`--map-size` y `--minimap` son opcionales: por defecto el tamaño del mapa se detecta del replay y el minimapa se calcula a partir del área cliente del juego.
+
 
 ## Estructura del proyecto
 

@@ -7,16 +7,19 @@ versions that mgz's header parser does not yet support.
 NOTE: BUILD-based detection (Castle, Monastery, SiegeWorkshop, Wonder, AgeUp)
 is disabled for now because building_id parsing is unreliable in game versions
 >= 57257 (mgz-fast misreads the BUILD packet). Only sync-based (Raid, Battle)
-and action-based (APMPeak) events are emitted. Camera targets use the most
-recent VIEWLOCK position.
+and action-based (APMPeak) events are emitted.
+
+Camera targets use the event player's most recent action position (where that
+player was actually looking/acting), falling back to the recorded player's
+VIEWLOCK when no action position is available.
 """
 from __future__ import annotations
 
 import io
 import json
-import math
 import struct
-from collections import defaultdict, deque
+import zlib
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -46,11 +49,65 @@ def _body_buffer(path: str) -> io.BytesIO:
     return buf
 
 
+def get_map_size(replay_path: str) -> int | None:
+    """Read the map size (in tiles) from the replay header.
+
+    The header is a raw-deflate compressed blob.  Only the small fixed prefix
+    that holds the DE game options is parsed; in modern DE saves the ``diff``
+    field stores the map size in tiles (e.g. 144, 200).
+    """
+    raw = Path(replay_path).read_bytes()
+    if len(raw) < 20:
+        return None
+    header_len = struct.unpack_from("<I", raw, 0)[0]
+    if header_len <= 0 or header_len > len(raw):
+        return None
+    try:
+        # header_length (4) + check (4) then a raw-deflate stream
+        data = zlib.decompress(raw[8:header_len], wbits=-15)
+    except zlib.error:
+        return None
+
+    try:
+        end = data.index(b"\x00")  # game version CString, e.g. b"VER 9.4"
+        p = end + 1
+        old_save = struct.unpack_from("<f", data, p)[0]
+        p += 4
+        if old_save == -1:
+            new_save = struct.unpack_from("<I", data, p)[0]
+            p += 4
+            save_version = new_save / 65536.0
+        else:
+            save_version = old_save
+
+        def u32() -> int:
+            nonlocal p
+            value = struct.unpack_from("<I", data, p)[0]
+            p += 4
+            return value
+
+        u32()  # build
+        if save_version >= 26.16:
+            u32()  # timestamp
+        u32()  # version (float)
+        u32()  # interval_version
+        u32()  # game_options_version
+        dlc_count = u32()
+        if dlc_count > 64:
+            return None
+        for _ in range(dlc_count):
+            u32()
+        u32()  # dataset_ref
+        map_size = u32()  # modern DE: map size in tiles
+    except struct.error:
+        return None
+    return map_size if 50 <= map_size <= 600 else None
+
+
 def parse_events(replay_path: str) -> list[Event]:
     buf = _body_buffer(replay_path)
 
     global_view = (0.0, 0.0)
-    last_viewlock = (0.0, 0.0)
     viewlock_history: list[tuple[int, float, float]] = []
     player_actions: dict[int, list[tuple[int, float | None, float | None]]] = defaultdict(list)
     sync_obj: dict[int, list[tuple[int, int]]] = defaultdict(list)
@@ -79,38 +136,47 @@ def parse_events(replay_path: str) -> list[Event]:
         elif op == fast.Operation.VIEWLOCK:
             x, y = payload
             global_view = (float(x), float(y))
-            last_viewlock = (float(x), float(y))
             viewlock_history.append((cur_time, float(x), float(y)))
         elif op == fast.Operation.ACTION:
             action_type, ap = payload
-            name = action_type.name
-            t = cur_time
             player = ap.get("player_id") if isinstance(ap, dict) else None
             x = ap.get("x") if isinstance(ap, dict) else None
             y = ap.get("y") if isinstance(ap, dict) else None
             if player is not None:
                 player_actions[player].append(
-                    (t, float(x) if x is not None else None, float(y) if y is not None else None)
+                    (cur_time, float(x) if x is not None else None,
+                     float(y) if y is not None else None)
                 )
 
-    # Helper: nearest viewlock before time t
+    # Nearest recorded-player camera position at or before time ``t``.
     def nearest_view(t: int) -> tuple[float, float]:
-        best = (0.0, 0.0)
+        best = global_view
         for vt, vx, vy in viewlock_history:
             if vt <= t:
                 best = (vx, vy)
             else:
                 break
-        return best if viewlock_history else global_view
+        return best
 
-    # APM peaks
-    WINDOW = 60000
+    # Nearest action position of a given player at or before ``t``.
+    def nearest_action(player: int, t: int, max_age: int = 120_000) -> tuple[float, float] | None:
+        for at, ax, ay in reversed(player_actions.get(player, [])):
+            if at > t:
+                continue
+            if t - at > max_age:
+                break
+            if ax is not None and ay is not None:
+                return (ax, ay)
+        return None
+
+    # APM peaks: windows with an action count well above recent average.
+    WINDOW = 60_000
     for player, acts in player_actions.items():
         if len(acts) < 30:
             continue
         t_min = acts[0][0]
         t_max = acts[-1][0]
-        step = 30000
+        step = 30_000
         win_counts: list[tuple[int, int]] = []
         ts = t_min
         while ts + WINDOW <= t_max:
@@ -127,9 +193,10 @@ def parse_events(replay_path: str) -> list[Event]:
                     cy = sum(a[2] for a in ws) / len(ws)
                 else:
                     cx, cy = nearest_view(ts)
-                events.append(Event(t=ts + WINDOW // 2, type="APMPeak", player=player, x=cx, y=cy, extra={"apm": cnt}))
+                events.append(Event(t=ts + WINDOW // 2, type="APMPeak", player=player,
+                                    x=cx, y=cy, extra={"apm": cnt}))
 
-    # Raids / battles from sync obj_count drops
+    # Raids / battles from sync obj_count drops.
     for player, series in sync_obj.items():
         if len(series) < 5:
             continue
@@ -140,7 +207,7 @@ def parse_events(replay_path: str) -> list[Event]:
             j = i + 1
             min_oc = oc0
             min_t = t0
-            while j < n and series[j][0] - t0 <= 30000:
+            while j < n and series[j][0] - t0 <= 30_000:
                 if series[j][1] < min_oc:
                     min_oc = series[j][1]
                     min_t = series[j][0]
@@ -148,21 +215,25 @@ def parse_events(replay_path: str) -> list[Event]:
             drop = oc0 - min_oc
             if drop >= 10:
                 kind = "Battle" if drop >= 20 else "Raid"
-                cx, cy = nearest_view(min_t)
-                events.append(Event(t=min_t, type=kind, player=player, x=cx, y=cy, extra={"drop": drop}))
+                pos = nearest_action(player, min_t)
+                if pos is None:
+                    pos = nearest_view(min_t)
+                events.append(Event(t=min_t, type=kind, player=player,
+                                    x=pos[0], y=pos[1], extra={"drop": drop}))
                 i = j
             else:
                 i += 1
 
-    # Deduplicate: same type+player within 10s -> keep first (per player)
+    # Deduplicate per (type, player): collapse repeats within 10 s.
+    last_seen: dict[tuple[str, int | None], int] = {}
     deduped: list[Event] = []
     for ev in sorted(events, key=lambda e: e.t):
-        if deduped:
-            last = deduped[-1]
-            if last.type == ev.type and last.player == ev.player and (ev.t - last.t) < 10000:
-                continue
+        key = (ev.type, ev.player)
+        seen = last_seen.get(key)
+        if seen is not None and ev.t - seen < 10_000:
+            continue
+        last_seen[key] = ev.t
         deduped.append(ev)
-    deduped.sort(key=lambda e: e.t)
     return deduped
 
 
@@ -174,7 +245,7 @@ if __name__ == "__main__":
     import sys as _sys
 
     evs = parse_events(_sys.argv[1])
-    print(f"parsed {len(evs)} events")
+    print(f"parsed {len(evs)} events; map_size={get_map_size(_sys.argv[1])}")
     if len(_sys.argv) > 2:
         Path(_sys.argv[2]).write_text(events_to_json(evs))
         print("saved to", _sys.argv[2])

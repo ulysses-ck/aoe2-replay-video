@@ -17,13 +17,22 @@ class Recorder:
 
     def start(self, bbox: tuple[int, int, int, int] | None = None) -> None:
         if bbox is None:
-            bbox = (0, 0, self.cfg.window_width, self.cfg.window_height)
+            w, h = self.cfg.window_width, self.cfg.window_height
+            if not w or not h:
+                try:
+                    import pyautogui  # type: ignore
+
+                    size = pyautogui.size()
+                    w, h = size.width, size.height
+                except Exception:
+                    w, h = 1366, 768
+            bbox = (0, 0, w, h)
         left, top, w, h = bbox
         # align to even dimensions for h264
         w -= w % 2
         h -= h % 2
         if sys.platform == "win32":
-            inp = ["-f", "gdigrab", "-framerate", "30", "-offset_x", str(left), "-offset_y", str(top), "-video_size", f"{w}x{h}", "-i", "desktop"]
+            inp = ["-f", "gdigrab", "-draw_mouse", "0", "-framerate", "30", "-offset_x", str(left), "-offset_y", str(top), "-video_size", f"{w}x{h}", "-i", "desktop"]
         else:
             inp = ["-f", "x11grab", "-framerate", "30", "-video_size", f"{w}x{h}", "-i", f":0.0+{left},{top}"]
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"] + inp

@@ -78,6 +78,37 @@ def activate(window: Any) -> None:
             pass
 
 
+def _hwnd(window: Any) -> int | None:
+    """Best-effort native handle for a window object."""
+    if window is None:
+        return None
+    if isinstance(window, int):
+        return window
+    return getattr(window, "_hWnd", None)
+
+
+def maximize(window: Any) -> None:
+    """Maximize the window instead of resizing it (keeps the native UI scale)."""
+    if window is None:
+        return
+    if sys.platform == "win32":
+        hwnd = _hwnd(window)
+        if hwnd:
+            try:
+                import ctypes
+
+                ctypes.windll.user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+                return
+            except Exception:
+                pass
+    try:
+        if hasattr(window, "maximize"):
+            window.maximize()
+            return
+    except Exception:
+        pass
+
+
 def set_geometry(window: Any, x: int, y: int, w: int, h: int) -> None:
     if window is None:
         return
@@ -98,9 +129,27 @@ def set_geometry(window: Any, x: int, y: int, w: int, h: int) -> None:
 
 
 def get_bbox(window: Any) -> tuple[int, int, int, int] | None:
-    """Return (left, top, width, height) of the window."""
+    """Return (left, top, width, height) of the client area in screen pixels."""
     if window is None:
         return None
+    if sys.platform == "win32":
+        hwnd = _hwnd(window)
+        if hwnd:
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.windll.user32
+                rect = wintypes.RECT()
+                if user32.GetClientRect(hwnd, ctypes.byref(rect)):
+                    origin = wintypes.POINT(0, 0)
+                    user32.ClientToScreen(hwnd, ctypes.byref(origin))
+                    width = rect.right - rect.left
+                    height = rect.bottom - rect.top
+                    if width > 0 and height > 0:
+                        return (origin.x, origin.y, width, height)
+            except Exception:
+                pass
     try:
         if hasattr(window, "left"):
             return (int(window.left), int(window.top), int(window.width), int(window.height))
