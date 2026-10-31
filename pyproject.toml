@@ -13,6 +13,7 @@ authors = [{ name = "ulysses" }]
 dependencies = [
     "mgz>=1.8.51",
     "pyautogui",
+    "pygetwindow",
     "pynput",
     "ffmpeg-python",
     "google-api-python-client",
@@ -25,6 +26,7 @@ dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
 aoe2-replay-video = "aoe2_replay_video.__main__:main"
+aoe2-replay-record = "aoe2_replay_video.control.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

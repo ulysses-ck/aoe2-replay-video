@@ -86,7 +86,7 @@ Herramienta de escritorio que convierte un replay de **Age of Empires II: Defini
 ## Estado actual
 
 - ✅ Fase 1 (parsing): implementado en `src/aoe2_replay_video/parser/replay.py`. Detecta AgeUp, Castle, SiegeWorkshop, Wonder, Monastery, Advance, Relic, APMPeak, Raid, Battle. Probado en replays v101.103.48987.0 y v101.103.54800.0.
-- ⏳ Fase 2 (control + captura): pendiente.
+- 🚧 Fase 2 (control + captura): scaffolding implementado en `src/aoe2_replay_video/control/` (launcher, window, recorder, playback, CLI). Requiere ejecución en Windows para control real.
 - ⏳ Fase 3 (edición FFmpeg): pendiente.
 - ⏳ Fase 4 (YouTube): pendiente.
 
