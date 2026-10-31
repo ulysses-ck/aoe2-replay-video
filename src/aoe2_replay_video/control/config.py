@@ -1,13 +1,17 @@
 """Configuration for game control and capture."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 
 @dataclass
 class Config:
-    game_exe: str = r"D:\XboxGames\Age of Empires II- Definitive Edition\Content\Game\AoE2DE.exe"
+    game_exe: str = os.environ.get(
+        "AOE2_GAME_EXE",
+        r"D:\XboxGames\Age of Empires II- Definitive Edition\Content\gamelaunchhelper.exe",
+    )
     replay_path: str = ""
     events_path: str = ""   # JSON from parser
     output_path: str = "output.mp4"
