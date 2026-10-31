@@ -86,3 +86,33 @@ Convertir un replay `.aoe2record` de AoE2: DE en un vídeo `.mp4` resumido que:
 - Parseo correcto de ≥ 10 replays de prueba.
 - Vídeo generado con duración ≤ 25% del original.
 - Subida exitosa a YouTube (post-MVP).
+
+## 8. Umbrales de detección (v0, ajustables)
+
+Valores iniciales para las heurísticas de Fase 1. Se calibran contra replays reales.
+
+| Evento | Condición | Ventana |
+|---|---|---|
+| Pase de Edad | research completed: Feudal/Castle/Imperial Age | instantáneo |
+| Raid a economía | ≥ 5 aldeanos (villager) muertos | 30 s |
+| Pico de batalla | ≥ 15 unidades militares muertas en radio ≤ 20 tiles | 60 s |
+| Pico APM | APM actual ≥ 1.5× promedio últimos 60 s o delta ≥ 30 APM | 60 s |
+| Avanzada/asedio | Castle o Siege Workshop construido a ≤ 40 tiles del TC enemigo | instantáneo |
+| Conversión crítica | monk convierte unidad con coste oro ≥ 60 (elephant, paladin, UU, etc.) | instantáneo |
+| Maravilla/reliquias | Wonder construction started O ≥ 3 reliquias capturadas | 60 s |
+
+### Reglas de segmentación
+
+- Cada evento genera un segmento `[t-5s, t+10s]` a velocidad 1x.
+- Segmentos solapados se fusionan (gap ≤ 3 s).
+- Todo lo que queda fuera de segmentos se acelera según perfil (2x/4x/8x).
+- Velocidad mínima entre eventos: la del perfil elegido.
+
+### Parámetros globales
+
+- `PRE_EVENT_SEC = 5`
+- `POST_EVENT_SEC = 10`
+- `MERGE_GAP_SEC = 3`
+- `BATTLE_RADIUS_TILES = 20`
+- `ADVANCE_DISTANCE_TILES = 40`
+- `HIGH_VALUE_GOLD_COST = 60`
