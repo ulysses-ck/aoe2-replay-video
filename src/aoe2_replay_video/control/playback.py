@@ -37,9 +37,19 @@ def _center_camera(cfg: Config, x: float, y: float, map_size: int) -> None:
     if pyautogui is None or cfg.minimap is None:
         return
     mx, my, mw, mh = cfg.minimap
-    # map world (0..map_size) -> minimap pixels
-    px = mx + int((x / max(1, map_size)) * mw)
-    py = my + int((y / max(1, map_size)) * mh)
+    # AoE2 minimap is a diamond (rotated square) inside its bounding box.
+    N = max(1, map_size)
+    u = x / N
+    v = y / N
+    cx = mx + mw / 2.0
+    cy = my + mh / 2.0
+    px = int(cx + (u - v) * (mw / 2.0))
+    py = int(cy + (u + v - 1.0) * (mh / 2.0))
+    # clamp to minimap bounds
+    px = max(mx, min(mx + mw - 1, px))
+    py = max(my, min(my + mh - 1, py))
+    if DEBUG:
+        print(f"    camera -> ({px}, {py})  [event x={x:.0f}, y={y:.0f}]", flush=True)
     pyautogui.click(px, py)
 
 
