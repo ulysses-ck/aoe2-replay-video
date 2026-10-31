@@ -83,7 +83,21 @@ Herramienta de escritorio que convierte un replay de **Age of Empires II: Defini
 4. **Subida**:
    - Al finalizar, la app mostrará la vista previa del archivo `.mp4` y un botón directo para **"Subir a YouTube"** o **"Guardar Localmente"**.
 
-## Estructura del proyecto (propuesta)
+## Estado actual
+
+- ✅ Fase 1 (parsing): implementado en `src/aoe2_replay_video/parser/replay.py`. Detecta AgeUp, Castle, SiegeWorkshop, Wonder, Monastery, Advance, Relic, APMPeak, Raid, Battle. Probado en replays v101.103.48987.0 y v101.103.54800.0.
+- ⏳ Fase 2 (control + captura): pendiente.
+- ⏳ Fase 3 (edición FFmpeg): pendiente.
+- ⏳ Fase 4 (YouTube): pendiente.
+
+Uso rápido del parser:
+
+```bash
+pip install -e .
+python -c "from aoe2_replay_video.parser import parse_events; print(len(parse_events('replay.aoe2record')))"
+```
+
+## Estructura del proyecto
 
 ```
 aoe2-replay-video/
@@ -94,11 +108,12 @@ aoe2-replay-video/
 ├── src/
 │   └── aoe2_replay_video/
 │       ├── __init__.py
-│       ├── parser/          # Fase 1: parsing de .aoe2record
+│       ├── parser/          # Fase 1: parsing + detección de eventos
 │       ├── control/         # Fase 2: control de juego + captura
 │       ├── editing/         # Fase 3: edición con FFmpeg
 │       ├── youtube/         # Fase 4: OAuth2 + upload
 │       └── ui/             # GUI
+├── scripts/                # scripts de exploración
 ├── tests/
 └── docs/
 ```
