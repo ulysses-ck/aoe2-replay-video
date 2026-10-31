@@ -3,6 +3,12 @@
 Uses mgz's fast body parser. Header parsing is bypassed (we read the body
 offset from the first 4 bytes of the file), so this works across game
 versions that mgz's header parser does not yet support.
+
+NOTE: BUILD-based detection (Castle, Monastery, SiegeWorkshop, Wonder, AgeUp)
+is disabled for now because building_id parsing is unreliable in game versions
+>= 57257 (mgz-fast misreads the BUILD packet). Only sync-based (Raid, Battle)
+and action-based (APMPeak) events are emitted. Camera targets use the most
+recent VIEWLOCK position.
 """
 from __future__ import annotations
 
@@ -10,21 +16,17 @@ import io
 import json
 import math
 import struct
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-import mgz.fast as fast  # noqa: E402  (mgz.fast.operation / meta)
-
-
-AGE_NAMES = {101: "Feudal", 102: "Castle", 103: "Imperial"}
-BUILD_TARGETS = {82: "Castle", 49: "SiegeWorkshop", 276: "Wonder", 104: "Monastery"}
+import mgz.fast as fast
 
 
 @dataclass
 class Event:
-    t: int          # milliseconds from game start
+    t: int
     type: str
     player: int | None = None
     x: float | None = None
@@ -45,11 +47,11 @@ def _body_buffer(path: str) -> io.BytesIO:
 
 
 def parse_events(replay_path: str) -> list[Event]:
-    """Return a time-ordered list of highlight events for a replay."""
     buf = _body_buffer(replay_path)
 
-    player_tc: dict[int, tuple[float, float]] = {}
     global_view = (0.0, 0.0)
+    last_viewlock = (0.0, 0.0)
+    viewlock_history: list[tuple[int, float, float]] = []
     player_actions: dict[int, list[tuple[int, float | None, float | None]]] = defaultdict(list)
     sync_obj: dict[int, list[tuple[int, int]]] = defaultdict(list)
     events: list[Event] = []
@@ -77,6 +79,8 @@ def parse_events(replay_path: str) -> list[Event]:
         elif op == fast.Operation.VIEWLOCK:
             x, y = payload
             global_view = (float(x), float(y))
+            last_viewlock = (float(x), float(y))
+            viewlock_history.append((cur_time, float(x), float(y)))
         elif op == fast.Operation.ACTION:
             action_type, ap = payload
             name = action_type.name
@@ -84,30 +88,20 @@ def parse_events(replay_path: str) -> list[Event]:
             player = ap.get("player_id") if isinstance(ap, dict) else None
             x = ap.get("x") if isinstance(ap, dict) else None
             y = ap.get("y") if isinstance(ap, dict) else None
-            if name == "BUILD":
-                bid = ap.get("building_id") if isinstance(ap, dict) else None
-                if bid == 109 and player is not None and player not in player_tc and x is not None and y is not None:
-                    player_tc[player] = (float(x), float(y))
-                if bid in BUILD_TARGETS and x is not None and y is not None:
-                    kind = BUILD_TARGETS[bid]
-                    if kind in ("Castle", "SiegeWorkshop"):
-                        for ep, (ex, ey) in player_tc.items():
-                            if ep == player:
-                                continue
-                            if math.hypot(float(x) - ex, float(y) - ey) <= 40:
-                                kind = "Advance"
-                                break
-                    events.append(Event(t=t, type=kind, player=player, x=float(x), y=float(y)))
-            elif name == "RESEARCH":
-                tid = ap.get("technology_id") if isinstance(ap, dict) else None
-                if tid in AGE_NAMES and player is not None:
-                    cx, cy = player_tc.get(player, global_view)
-                    events.append(Event(t=t, type="AgeUp", player=player, x=cx, y=cy, extra={"age": AGE_NAMES[tid]}))
-            elif name == "DROP_RELIC":
-                cx, cy = (player_tc.get(player, global_view) if player is not None else global_view)
-                events.append(Event(t=t, type="Relic", player=player, x=cx, y=cy))
             if player is not None:
-                player_actions[player].append((t, (float(x) if x is not None else None), (float(y) if y is not None else None)))
+                player_actions[player].append(
+                    (t, float(x) if x is not None else None, float(y) if y is not None else None)
+                )
+
+    # Helper: nearest viewlock before time t
+    def nearest_view(t: int) -> tuple[float, float]:
+        best = (0.0, 0.0)
+        for vt, vx, vy in viewlock_history:
+            if vt <= t:
+                best = (vx, vy)
+            else:
+                break
+        return best if viewlock_history else global_view
 
     # APM peaks
     WINDOW = 60000
@@ -129,10 +123,10 @@ def parse_events(replay_path: str) -> list[Event]:
             if mean_prev > 0 and cnt >= mean_prev * 1.5 and cnt - mean_prev >= 30 and cnt >= 40:
                 ws = [a for a in acts if ts <= a[0] < ts + WINDOW and a[1] is not None]
                 if ws:
-                    cx = sum(a[1] for a in ws) / len(ws)  # type: ignore[arg-type]
-                    cy = sum(a[2] for a in ws) / len(ws)  # type: ignore[arg-type]
+                    cx = sum(a[1] for a in ws) / len(ws)
+                    cy = sum(a[2] for a in ws) / len(ws)
                 else:
-                    cx, cy = player_tc.get(player, global_view)
+                    cx, cy = nearest_view(ts)
                 events.append(Event(t=ts + WINDOW // 2, type="APMPeak", player=player, x=cx, y=cy, extra={"apm": cnt}))
 
     # Raids / battles from sync obj_count drops
@@ -152,21 +146,20 @@ def parse_events(replay_path: str) -> list[Event]:
                     min_t = series[j][0]
                 j += 1
             drop = oc0 - min_oc
-            if drop >= 5:
-                kind = "Battle" if drop >= 15 else "Raid"
-                cx, cy = player_tc.get(player, global_view)
+            if drop >= 10:
+                kind = "Battle" if drop >= 20 else "Raid"
+                cx, cy = nearest_view(min_t)
                 events.append(Event(t=min_t, type=kind, player=player, x=cx, y=cy, extra={"drop": drop}))
                 i = j
             else:
                 i += 1
 
-    # Deduplicate: same type+player within a short window -> keep first
+    # Deduplicate: same type+player within 10s -> keep first (per player)
     deduped: list[Event] = []
     for ev in sorted(events, key=lambda e: e.t):
         if deduped:
             last = deduped[-1]
             if last.type == ev.type and last.player == ev.player and (ev.t - last.t) < 10000:
-                # merge: keep earlier, skip
                 continue
         deduped.append(ev)
     deduped.sort(key=lambda e: e.t)
